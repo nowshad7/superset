@@ -248,6 +248,12 @@ RUN --mount=type=cache,target=${SUPERSET_HOME}/.cache/uv \
     uv pip install -e .
 RUN python -m compileall /app/superset
 
+# ==== API CONNECTOR HERE (for lean target) ====
+USER root
+COPY ./superset-json-api-connector /app/superset-json-api-connector
+RUN cd /app/superset-json-api-connector && uv pip install -e .
+# ====================================================
+
 USER superset
 
 ######################################################################
@@ -277,6 +283,12 @@ RUN --mount=type=cache,target=${SUPERSET_HOME}/.cache/uv \
 
 RUN uv pip install .[postgres]
 RUN python -m compileall /app/superset
+
+# ==== ADD CONNECTOR HERE (for dev target) ====
+USER root
+COPY ./superset-json-api-connector /app/superset-json-api-connector
+RUN cd /app/superset-json-api-connector && uv pip install -e .
+# ==============================================
 
 USER superset
 
