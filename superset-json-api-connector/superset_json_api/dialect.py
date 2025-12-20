@@ -178,7 +178,7 @@ class JSONAPIDialect(DefaultDialect):
 
     def has_table(self, connection, table_name: str, schema: str = None, **kwargs):
         """APIs don't have traditional tables, so always return True for default table"""
-        return table_name.lower() in ['data', 'api_data', 'json_data']
+        return table_name.lower() in ['api_data']
 
     def get_table_names(self, connection, schema: str = None, **kwargs):
         """Return table names - Superset needs this for dataset creation"""
@@ -225,3 +225,11 @@ class JSONAPIDialect(DefaultDialect):
         if name is None:
             return None
         return name
+
+    def get_view_names(self, connection, schema=None, **kwargs):
+        """Return empty list for views - required by Superset"""
+        return []
+
+    def get_temp_view_names(self, connection, schema=None, **kwargs):
+        """Return empty list for temp views"""
+        return []
