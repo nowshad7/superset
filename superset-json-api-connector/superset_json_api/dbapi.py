@@ -1,6 +1,8 @@
 import json
+import duckdb
+import pandas as pd
 import requests
-from typing import Any, List, Dict, Optional, Tuple
+from typing import Any, List, Dict, Tuple
 
 # ================= DBAPI 2.0 METADATA =================
 
@@ -13,7 +15,6 @@ BINARY = 2
 NUMBER = 3
 DATETIME = 4
 ROWID = 5
-
 
 # ================= DBAPI EXCEPTIONS =================
 
@@ -30,7 +31,7 @@ class ProgrammingError(DatabaseError): pass
 class NotSupportedError(DatabaseError): pass
 
 
-# ================= DBAPI connect() =================
+# ================= connect() =================
 
 def connect(endpoint: str, **kwargs):
     return JSONAPIConnection(endpoint, **kwargs)
@@ -61,11 +62,15 @@ class JSONAPIConnection:
         self.session = requests.Session()
         self.session.headers.update(self.headers)
 
+        # one DuckDB connection per DBAPI connection
+        self.duck = duckdb.connect(database=":memory:")
+
     def cursor(self):
         return JSONAPICursor(self)
 
     def close(self):
         self.session.close()
+        self.duck.close()
 
     def commit(self): pass
     def rollback(self): pass
@@ -77,8 +82,7 @@ class JSONAPICursor:
     def __init__(self, connection: JSONAPIConnection):
         self.connection = connection
         self._results: List[Tuple] = []
-        self._columns: List[str] = []
-        self._description = []
+        self._description: List[Tuple] = []
         self._row_index = 0
         self.rowcount = -1
         self.arraysize = 1000
@@ -86,17 +90,13 @@ class JSONAPICursor:
     # ---------------- execute ----------------
 
     def execute(self, operation: str = None, parameters: Dict = None):
+        if not operation:
+            raise ProgrammingError("No SQL provided")
+
         try:
-            limit = self._parse_limit(operation)
-            filters = self._parse_filters(operation)
-
-            params = {}
-            params.update(parameters or {})
-            params.update(filters)
-
+            # 1. Fetch JSON data
             response = self.connection.session.get(
                 self.connection.endpoint,
-                params=params,
                 timeout=self.connection.timeout,
                 verify=self.connection.verify_ssl,
             )
@@ -107,36 +107,43 @@ class JSONAPICursor:
                 )
 
             try:
-                data = response.json()
+                payload = response.json()
             except json.JSONDecodeError as e:
-                raise DataError(f"Invalid JSON: {e}")
+                raise DataError(f"Invalid JSON response: {e}")
 
-            rows = self._normalize_data(data)
+            rows = self._normalize_data(payload)
 
-            if not rows:
-                self._results = []
-                self._columns = []
-                self._description = []
-                self.rowcount = 0
-                return
+            # 2. Load into DuckDB
+            self.connection.duck.execute("DROP TABLE IF EXISTS api_data")
 
-            # ✅ COLUMN ORDER (CRITICAL)
-            self._columns = list(rows[0].keys())
+            if rows:
+                df = pd.DataFrame(rows)
+                self.connection.duck.register("df_api_data", df)
+                self.connection.duck.execute(
+                    "CREATE TABLE api_data AS SELECT * FROM df_api_data"
+                )
+            else:
+                # empty table safeguard
+                self.connection.duck.execute(
+                    "CREATE TABLE api_data (data VARCHAR)"
+                )
 
-            # ✅ DBAPI description
-            self._description = self._create_description(rows[0])
+            # 3. Execute SQL (DuckDB = full SQL engine)
+            result = self.connection.duck.execute(operation)
 
-            # ✅ CONVERT DICTS → TUPLES
-            self._results = [
-                tuple(row.get(col) for col in self._columns)
-                for row in rows[:limit]
-            ]
-
+            self._results = result.fetchall()
             self.rowcount = len(self._results)
             self._row_index = 0
 
-        except requests.RequestException as e:
-            raise OperationalError(f"Network error: {e}")
+            # 4. DBAPI cursor.description
+            self._description = []
+            for col in result.description:
+                self._description.append(
+                    (col[0], STRING, None, None, None, None, True)
+                )
+
+        except Exception as e:
+            raise DatabaseError(str(e))
 
     # ---------------- fetch methods ----------------
 
@@ -166,7 +173,6 @@ class JSONAPICursor:
     def close(self):
         self._results = []
         self._description = []
-        self._columns = []
         self.rowcount = -1
 
     def executemany(self, *args):
@@ -176,30 +182,6 @@ class JSONAPICursor:
     def setoutputsize(self, size, column=None): pass
 
     # ---------------- helpers ----------------
-
-    def _parse_limit(self, sql: str) -> int:
-        import re
-        if not sql:
-            return 1000
-        m = re.search(r"LIMIT\s+(\d+)", sql, re.I)
-        return int(m.group(1)) if m else 1000
-
-    def _parse_filters(self, sql: str) -> Dict:
-        import re
-        filters = {}
-        if not sql:
-            return filters
-
-        m = re.search(r"WHERE\s+(.+?)(?:LIMIT|$)", sql, re.I | re.S)
-        if not m:
-            return filters
-
-        for key, val1, val2, val3 in re.findall(
-            r"(\w+)\s*=\s*(?:'([^']*)'|\"([^\"]*)\"|(\w+))", m.group(1)
-        ):
-            filters[key] = val1 or val2 or val3
-
-        return filters
 
     def _normalize_data(self, data: Any) -> List[Dict]:
         if isinstance(data, dict):
@@ -214,17 +196,6 @@ class JSONAPICursor:
             return [row for row in data if isinstance(row, dict)]
 
         return []
-
-    def _create_description(self, row: Dict) -> List[Tuple]:
-        desc = []
-        for k, v in row.items():
-            if isinstance(v, (int, float, bool)):
-                t = NUMBER
-            else:
-                t = STRING
-
-            desc.append((k, t, None, None, None, None, True))
-        return desc
 
 
 # ================= TYPE ALIASES =================
