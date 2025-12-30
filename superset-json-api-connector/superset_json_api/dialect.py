@@ -5,7 +5,7 @@ from sqlalchemy import types as sqltypes
 
 class JSONAPIIdentifierPreparer(compiler.IdentifierPreparer):
     def __init__(self, dialect):
-        super().__init__(dialect, initial_quote="", final_quote="")
+        super().__init__(dialect, initial_quote='"', final_quote='"')
 
 
 class JSONAPIDialect(DefaultDialect):
@@ -21,11 +21,10 @@ class JSONAPIDialect(DefaultDialect):
     supports_native_boolean = True
     supports_sane_rowcount = True
     supports_sane_multi_rowcount = True
+    supports_native_identifier_quoting = True
 
     default_paramstyle = "pyformat"
     max_identifier_length = 255
-
-    # ---------------- DBAPI ----------------
 
     @classmethod
     def dbapi(cls):
@@ -56,8 +55,6 @@ class JSONAPIDialect(DefaultDialect):
 
         return [endpoint], params
 
-    # ---------------- Schema ----------------
-
     def get_table_names(self, connection, schema=None, **kw):
         return ["api_data"]
 
@@ -65,14 +62,10 @@ class JSONAPIDialect(DefaultDialect):
         return table_name == "api_data"
 
     def get_columns(self, connection, table_name, schema=None, **kw):
-        # 🔑 IMPORTANT FIX
         dbapi_conn = connection.connection
         cursor = dbapi_conn.cursor()
-
         cursor.execute("SELECT * FROM api_data LIMIT 1")
-
         description = cursor.description or []
-
         columns = []
         for col in description:
             name = col[0]
@@ -103,8 +96,6 @@ class JSONAPIDialect(DefaultDialect):
             return sqltypes.Float()
         return sqltypes.Text()
 
-    # ---------------- Constraints ----------------
-
     def get_pk_constraint(self, connection, table_name, schema=None, **kw):
         return {"constrained_columns": [], "name": None}
 
@@ -115,15 +106,13 @@ class JSONAPIDialect(DefaultDialect):
         return []
 
     def get_schema_names(self, connection, **kw):
-        return ["default"]
+        return ["memory"]
 
     def get_view_names(self, connection, schema=None, **kw):
         return []
 
     def get_temp_view_names(self, connection, schema=None, **kw):
         return []
-
-    # ---------------- Health Check ----------------
 
     def do_ping(self, dbapi_connection):
         try:
@@ -133,8 +122,6 @@ class JSONAPIDialect(DefaultDialect):
             return True
         except Exception:
             return False
-
-    # ---------------- Name Handling ----------------
 
     def normalize_name(self, name):
         return name.lower() if name else name

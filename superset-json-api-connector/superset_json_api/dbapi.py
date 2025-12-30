@@ -4,8 +4,6 @@ import pandas as pd
 import requests
 from typing import Any, List, Dict, Tuple
 
-# ================= DBAPI 2.0 METADATA =================
-
 apilevel = "2.0"
 threadsafety = 1
 paramstyle = "pyformat"
@@ -15,8 +13,6 @@ BINARY = 2
 NUMBER = 3
 DATETIME = 4
 ROWID = 5
-
-# ================= DBAPI EXCEPTIONS =================
 
 class JSONAPIError(Exception): pass
 class Warning(Exception): pass
@@ -30,14 +26,8 @@ class InternalError(DatabaseError): pass
 class ProgrammingError(DatabaseError): pass
 class NotSupportedError(DatabaseError): pass
 
-
-# ================= connect() =================
-
 def connect(endpoint: str, **kwargs):
     return JSONAPIConnection(endpoint, **kwargs)
-
-
-# ================= CONNECTION =================
 
 class JSONAPIConnection:
     def __init__(
@@ -61,8 +51,6 @@ class JSONAPIConnection:
 
         self.session = requests.Session()
         self.session.headers.update(self.headers)
-
-        # one DuckDB connection per DBAPI connection
         self.duck = duckdb.connect(database=":memory:")
 
     def cursor(self):
@@ -75,9 +63,6 @@ class JSONAPIConnection:
     def commit(self): pass
     def rollback(self): pass
 
-
-# ================= CURSOR =================
-
 class JSONAPICursor:
     def __init__(self, connection: JSONAPIConnection):
         self.connection = connection
@@ -87,14 +72,11 @@ class JSONAPICursor:
         self.rowcount = -1
         self.arraysize = 1000
 
-    # ---------------- execute ----------------
-
     def execute(self, operation: str = None, parameters: Dict = None):
         if not operation:
             raise ProgrammingError("No SQL provided")
 
         try:
-            # 1. Fetch JSON data
             response = self.connection.session.get(
                 self.connection.endpoint,
                 timeout=self.connection.timeout,
@@ -112,8 +94,6 @@ class JSONAPICursor:
                 raise DataError(f"Invalid JSON response: {e}")
 
             rows = self._normalize_data(payload)
-
-            # 2. Load into DuckDB
             self.connection.duck.execute("DROP TABLE IF EXISTS api_data")
 
             if rows:
@@ -123,20 +103,16 @@ class JSONAPICursor:
                     "CREATE TABLE api_data AS SELECT * FROM df_api_data"
                 )
             else:
-                # empty table safeguard
                 self.connection.duck.execute(
                     "CREATE TABLE api_data (data VARCHAR)"
                 )
-
-            # 3. Execute SQL (DuckDB = full SQL engine)
             result = self.connection.duck.execute(operation)
 
             self._results = result.fetchall()
             self.rowcount = len(self._results)
             self._row_index = 0
-
-            # 4. DBAPI cursor.description
             self._description = []
+
             for col in result.description:
                 self._description.append(
                     (col[0], STRING, None, None, None, None, True)
@@ -144,8 +120,6 @@ class JSONAPICursor:
 
         except Exception as e:
             raise DatabaseError(str(e))
-
-    # ---------------- fetch methods ----------------
 
     def fetchone(self):
         if self._row_index >= len(self._results):
@@ -181,8 +155,6 @@ class JSONAPICursor:
     def setinputsizes(self, sizes): pass
     def setoutputsize(self, size, column=None): pass
 
-    # ---------------- helpers ----------------
-
     def _normalize_data(self, data: Any) -> List[Dict]:
         if isinstance(data, dict):
             for key in ("data", "results", "items", "records"):
@@ -196,9 +168,6 @@ class JSONAPICursor:
             return [row for row in data if isinstance(row, dict)]
 
         return []
-
-
-# ================= TYPE ALIASES =================
 
 Binary = bytes
 Date = Time = Timestamp = str
