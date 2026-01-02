@@ -288,6 +288,7 @@ RUN python -m compileall /app/superset
 USER root
 COPY ./superset-json-api-connector /app/superset-json-api-connector
 RUN cd /app/superset-json-api-connector && uv pip install -e .
+RUN uv pip install Flask-OAuthlib Authlib
 # ==============================================
 
 USER superset

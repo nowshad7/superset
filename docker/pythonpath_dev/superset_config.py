@@ -26,6 +26,10 @@ import sys
 
 from celery.schedules import crontab
 from flask_caching.backends.filesystemcache import FileSystemCache
+from custom_sso_security_manager import CustomSsoSecurityManager
+
+CUSTOM_SECURITY_MANAGER = CustomSsoSecurityManager
+GUEST_TOKEN_JWT_ALGO = "RS256"
 
 logger = logging.getLogger()
 
@@ -133,6 +137,32 @@ if os.getenv("CYPRESS_CONFIG") == "true":
 # Optionally import superset_config_docker.py (which will have been included on
 # the PYTHONPATH) in order to allow for local settings to be overridden
 #
+from flask_appbuilder.security.manager import AUTH_OAUTH
+
+AUTH_TYPE = AUTH_OAUTH
+
+OAUTH_PROVIDERS = [
+    {
+        'name': 'keycloak',
+        'token_key': 'access_token',
+        'icon': 'fa-address-card',
+        'remote_app': {
+            'client_id': 'cloud-billing',
+            'client_kwargs': {
+                'scope': 'openid email profile'
+            },
+            'server_metadata_url': 'https://erpdevelopment.brac.net/idp/realms/brac/.well-known/openid-configuration'
+        }
+    }
+]
+
+AUTH_USER_REGISTRATION = True
+# AUTH_USER_REGISTRATION_ROLE = "Gamma"
+# AUTH_USER_REGISTRATION_ROLE = "Alpha"
+AUTH_USER_REGISTRATION_ROLE = "Admin"
+AUTH_ROLES_SYNC_AT_LOGIN = True
+
+
 try:
     import superset_config_docker
     from superset_config_docker import *  # noqa: F403
