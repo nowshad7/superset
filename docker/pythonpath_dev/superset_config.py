@@ -149,7 +149,7 @@ OAUTH_PROVIDERS = [
         'remote_app': {
             'client_id': 'cloud-billing',
             'client_kwargs': {
-                'scope': 'openid email profile'
+                'scope': 'openid email profile offline_access'
             },
             'server_metadata_url': 'https://erpdevelopment.brac.net/idp/realms/brac/.well-known/openid-configuration'
         }

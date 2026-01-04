@@ -3,6 +3,7 @@ import duckdb
 import pandas as pd
 import requests
 from typing import Any, List, Dict, Tuple
+from flask import session
 
 apilevel = "2.0"
 threadsafety = 1
@@ -29,6 +30,19 @@ class NotSupportedError(DatabaseError): pass
 def connect(endpoint: str, **kwargs):
     return JSONAPIConnection(endpoint, **kwargs)
 
+
+def get_access_token():
+    oauth = session.get("oauth")
+    if not oauth:
+        print('access_token: ---> none')
+        return None
+
+    access_token = oauth[0]
+    print('access_token: --->', access_token)
+    # check it's a valid token, else using refresh token get new token
+    #
+    return access_token
+
 class JSONAPIConnection:
     def __init__(
         self,
@@ -48,6 +62,8 @@ class JSONAPIConnection:
 
         if api_key:
             self.headers["Authorization"] = f"Bearer {api_key}"
+        else:
+            self.headers["Authorization"] = f"Bearer {get_access_token()}"
 
         self.session = requests.Session()
         self.session.headers.update(self.headers)
@@ -77,12 +93,31 @@ class JSONAPICursor:
             raise ProgrammingError("No SQL provided")
 
         try:
+            print("=== JSONAPI REQUEST ===")
+            print("Endpoint:", self.connection.endpoint)
+            print("Headers:")
+            for k, v in self.connection.session.headers.items():
+                print(f"  {k}: {v}")
+            print("=======================")
+
+
             response = self.connection.session.get(
                 self.connection.endpoint,
                 timeout=self.connection.timeout,
                 verify=self.connection.verify_ssl,
             )
 
+            print("=== JSONAPI RESPONSE ===")
+            print("Status Code:", response.status_code)
+            print("Response Headers:")
+            for k, v in response.headers.items():
+                print(f"  {k}: {v}")
+
+            # Print body safely (truncate large payloads)
+            body_preview = response.text[:2000]
+            print("Response Body (preview):")
+            print(body_preview)
+            print("========================")
             if response.status_code != 200:
                 raise OperationalError(
                     f"HTTP {response.status_code}: {response.text[:200]}"
