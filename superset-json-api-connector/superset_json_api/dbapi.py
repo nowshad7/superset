@@ -118,6 +118,13 @@ class JSONAPICursor:
             print("Response Body (preview):")
             print(body_preview)
             print("========================")
+
+            if response.status_code == 401:
+                session.clear()
+                raise InterfaceError(
+                    "Authentication expired or invalid. User has been logged out."
+                )
+
             if response.status_code != 200:
                 raise OperationalError(
                     f"HTTP {response.status_code}: {response.text[:200]}"
