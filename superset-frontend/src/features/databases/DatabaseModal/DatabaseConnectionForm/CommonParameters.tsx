@@ -19,12 +19,14 @@
 import { t } from '@superset-ui/core';
 import { SupersetTheme } from '@apache-superset/core/ui';
 import { Switch } from '@superset-ui/core/components/Switch';
+import { Select } from '@superset-ui/core/components';
 import {
   InfoTooltip,
   LabeledErrorBoundInput as ValidatedInput,
 } from '@superset-ui/core/components';
 import { FieldPropTypes } from '../../types';
 import { toggleStyle, infoTooltip } from '../styles';
+import { safeJsonObjectParse } from 'src/components/JsonModal/utils';
 
 export const hostField = ({
   required,
@@ -86,7 +88,9 @@ export const httpPath = ({
   db,
   isValidating,
 }: FieldPropTypes) => {
-  const extraJson = JSON.parse(db?.extra || '{}');
+  // Use safeJsonObjectParse to avoid throwing when `db.extra` is not a JSON string
+  const parsedExtra = safeJsonObjectParse(db?.extra);
+  const extraJson = (parsedExtra as Record<string, any>) ?? {};
   return (
     <ValidatedInput
       isValidating={isValidating}
@@ -243,21 +247,22 @@ export const accessTokenField = ({
   validationErrors,
   db,
   isEditMode,
-  default_value,
+  default_value: defaultValue,
   description,
 }: FieldPropTypes) => (
   <ValidatedInput
-    id="access_token"
-    name="access_token"
+    id="oauth2_access_token"
+    name="oauth2_access_token"
     required={required}
     visibilityToggle={!isEditMode}
-    value={db?.parameters?.access_token}
+    // Prefer the namespaced oauth2 key but remain compatible with older 'access_token'
+    value={db?.parameters?.oauth2_access_token || db?.parameters?.access_token}
     validationMethods={{ onBlur: getValidation }}
-    errorMessage={validationErrors?.access_token}
-    placeholder={t('Paste your access token here')}
+    errorMessage={validationErrors?.oauth2_access_token || validationErrors?.access_token}
+    placeholder={t('Paste your OAuth2 access token here')}
     get_url={
-      typeof default_value === 'string' && default_value.includes('https://')
-        ? default_value
+      typeof defaultValue === 'string' && defaultValue.includes('https://')
+        ? defaultValue
         : null
     }
     description={description}
@@ -366,3 +371,177 @@ export const projectIdfield = ({
     />
   </>
 );
+
+export const endpointField = ({
+  changeMethods,
+  getValidation,
+  validationErrors,
+  db,
+  isValidating,
+}: FieldPropTypes) => (
+  <ValidatedInput
+    id="endpoint"
+    name="endpoint"
+    required
+    isValidating={isValidating}
+    value={db?.parameters?.endpoint || ''}
+    validationMethods={{ onBlur: getValidation }}
+    errorMessage={validationErrors?.endpoint}
+    placeholder={t('https://api.example.com/v1/resource')}
+    label={t('API Endpoint')}
+    onChange={changeMethods.onParametersChange}
+    helpText={t('The base URL for the JSON API to query.')}
+  />
+);
+
+export const authConfigTypeField = ({ changeMethods, db }: FieldPropTypes) => {
+  const value = db?.parameters?.auth_config_type || 'no_auth';
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ marginBottom: 8 }}>{t('Authentication type')}</div>
+      <Select
+        value={value}
+        onChange={(v: string) =>
+          changeMethods.onParametersChange({
+            target: { name: 'auth_config_type', value: v },
+          })
+        }
+        options={[
+          { value: 'no_auth', label: t('No auth') },
+          { value: 'superset_auth', label: t('Superset Auth Deligation') },
+          { value: 'basic_auth', label: t('Basic Auth') },
+          { value: 'api_key', label: t('API Key') },
+          { value: 'oauth2', label: t('OAuth2') },
+        ]}
+      />
+    </div>
+  );
+};
+
+export const apiKeyField = ({
+  changeMethods,
+  validationErrors,
+  db,
+}: FieldPropTypes) => {
+  if (db?.parameters?.auth_config_type !== 'api_key') return null;
+  return (
+    <ValidatedInput
+      id="api_key"
+      name="api_key"
+      required
+      value={db?.parameters?.api_key || ''}
+      validationMethods={{ onBlur: () => {} }}
+      errorMessage={validationErrors?.api_key}
+      placeholder={t('Paste your API key here')}
+      label={t('API Key')}
+      onChange={changeMethods.onParametersChange}
+    />
+  );
+};
+
+export const basicAuthUsernameField = ({
+  changeMethods,
+  db,
+}: FieldPropTypes) => {
+  if (db?.parameters?.auth_config_type !== 'basic_auth') return null;
+  return (
+    <ValidatedInput
+      id="basic_auth_username"
+      name="basic_auth_username"
+      value={db?.parameters?.basic_auth_username || ''}
+      label={t('Basic Auth Username')}
+      onChange={changeMethods.onParametersChange}
+      validationMethods={{ onBlur: () => {} }}
+    />
+  );
+};
+
+export const basicAuthPasswordField = ({
+  changeMethods,
+  db,
+  isEditMode,
+  validationErrors,
+  isValidating,
+}: FieldPropTypes) => {
+  if (db?.parameters?.auth_config_type !== 'basic_auth') return null;
+  return (
+    <ValidatedInput
+      id="basic_auth_password"
+      name="basic_auth_password"
+      visibilityToggle={!isEditMode}
+      isValidating={isValidating}
+      value={db?.parameters?.basic_auth_password || ''}
+      validationMethods={{ onBlur: () => {} }}
+      errorMessage={validationErrors?.basic_auth_password}
+      placeholder={t('e.g. ********')}
+      label={t('Basic Auth Password')}
+      onChange={changeMethods.onParametersChange}
+    />
+  );
+};
+
+// OAuth2 fields: show when auth_config_type === 'oauth2'
+export const oauth2ClientIdField = ({ changeMethods, db, validationErrors }: FieldPropTypes) => {
+  if (db?.parameters?.auth_config_type !== 'oauth2') return null;
+  return (
+    <ValidatedInput
+      id="oauth2_client_id"
+      name="oauth2_client_id"
+      value={db?.parameters?.oauth2_client_id || ''}
+      validationMethods={{ onBlur: () => {} }}
+      errorMessage={validationErrors?.oauth2_client_id}
+      placeholder={t('OAuth2 Client ID')}
+      label={t('Client ID')}
+      onChange={changeMethods.onParametersChange}
+    />
+  );
+};
+
+export const oauth2ClientSecretField = ({ changeMethods, db, isEditMode, validationErrors }: FieldPropTypes) => {
+  if (db?.parameters?.auth_config_type !== 'oauth2') return null;
+  return (
+    <ValidatedInput
+      id="oauth2_client_secret"
+      name="oauth2_client_secret"
+      visibilityToggle={!isEditMode}
+      value={db?.parameters?.oauth2_client_secret || ''}
+      validationMethods={{ onBlur: () => {} }}
+      errorMessage={validationErrors?.oauth2_client_secret}
+      placeholder={t('OAuth2 Client Secret')}
+      label={t('Client Secret')}
+      onChange={changeMethods.onParametersChange}
+    />
+  );
+};
+
+export const oauth2TokenUrlField = ({ changeMethods, db, validationErrors }: FieldPropTypes) => {
+  if (db?.parameters?.auth_config_type !== 'oauth2') return null;
+  return (
+    <ValidatedInput
+      id="oauth2_token_url"
+      name="oauth2_token_url"
+      value={db?.parameters?.oauth2_token_url || ''}
+      validationMethods={{ onBlur: () => {} }}
+      errorMessage={validationErrors?.oauth2_token_url}
+      placeholder={t('https://')}
+      label={t('Token URL')}
+      onChange={changeMethods.onParametersChange}
+    />
+  );
+};
+
+export const oauth2ScopesField = ({ changeMethods, db, validationErrors }: FieldPropTypes) => {
+  if (db?.parameters?.auth_config_type !== 'oauth2') return null;
+  return (
+    <ValidatedInput
+      id="oauth2_scopes"
+      name="oauth2_scopes"
+      value={db?.parameters?.oauth2_scopes || ''}
+      validationMethods={{ onBlur: () => {} }}
+      errorMessage={validationErrors?.oauth2_scopes}
+      placeholder={t('space separated scopes')}
+      label={t('Scopes')}
+      onChange={changeMethods.onParametersChange}
+    />
+  );
+};

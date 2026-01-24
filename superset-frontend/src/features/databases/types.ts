@@ -62,6 +62,13 @@ export type DatabaseParameters = {
   account?: string;
   ssh?: boolean;
   project_id?: string;
+  // JSONAPI specific fields
+  display_name?: string;
+  endpoint?: string;
+  auth_config_type?: 'no_auth' | 'superset_auth' | 'basic_auth' | 'api_key';
+  api_key?: string;
+  basic_auth_username?: string;
+  basic_auth_password?: string;
 };
 
 export type DatabaseObject = {

@@ -864,6 +864,8 @@ const DatabaseModal: FunctionComponent<DatabaseModalProps> = ({
         });
       }
 
+      console.log('DEBUG onSave: dbToUpdate.parameters =', dbToUpdate.parameters);
+
       const errors = await getValidation(dbToUpdate, true);
       if (!isEmpty(validationErrors) || errors?.length) {
         addDangerToast(
@@ -877,9 +879,16 @@ const DatabaseModal: FunctionComponent<DatabaseModalProps> = ({
       const parameters_schema = isEditMode
         ? dbToUpdate.parameters_schema?.properties
         : dbModel?.parameters.properties;
-      const additionalEncryptedExtra = JSON.parse(
-        dbToUpdate.masked_encrypted_extra || '{}',
-      );
+      let additionalEncryptedExtra: Record<string, any> = {};
+      try {
+        additionalEncryptedExtra = JSON.parse(
+          dbToUpdate.masked_encrypted_extra || '{}',
+        );
+      } catch (e) {
+        // If masked_encrypted_extra is not valid JSON, start with empty object
+        console.warn('Failed to parse masked_encrypted_extra:', e);
+        additionalEncryptedExtra = {};
+      }
       // eslint-disable-next-line camelcase
       const paramConfigArray = Object.keys(parameters_schema || {});
 
@@ -910,11 +919,11 @@ const DatabaseModal: FunctionComponent<DatabaseModalProps> = ({
               dbToUpdate.parameters[paramConfig as keyof DatabaseParameters],
             );
           } else {
-            additionalEncryptedExtra[paramConfig] = JSON.parse(
-              dbToUpdate.parameters?.[
-                paramConfig as OnlyKeyWithType<DatabaseParameters, string>
-              ] || '{}',
-            );
+            // For string values, store them as-is in the encrypted extra
+            const paramValue = dbToUpdate.parameters?.[
+              paramConfig as OnlyKeyWithType<DatabaseParameters, string>
+            ];
+            additionalEncryptedExtra[paramConfig] = paramValue || '';
           }
         }
       });

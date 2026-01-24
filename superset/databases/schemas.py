@@ -346,8 +346,14 @@ class DatabaseParametersSchemaMixin:  # pylint: disable=too-few-public-methods
                     ]
                 )
 
-            # validate parameters
-            parameters = engine_spec.parameters_schema.load(parameters)
+            # validate parameters if the engine provides a Marshmallow schema.
+            # Some engine specs (for example, the jsonapi engine) expose an
+            # OpenAPI-style parameters JSON schema via ``parameters_json_schema``
+            # and intentionally leave ``parameters_schema`` unset (None). In
+            # that case the frontend is expected to validate the form and the
+            # backend should not attempt to call ``.load()`` on a None value.
+            if getattr(engine_spec, "parameters_schema", None) is not None:
+                parameters = engine_spec.parameters_schema.load(parameters)
 
             serialized_encrypted_extra = data.get("masked_encrypted_extra") or "{}"
             try:
